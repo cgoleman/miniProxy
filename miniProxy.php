@@ -15,11 +15,11 @@ miniProxy is licensed under the GNU GPL v3 <http://www.gnu.org/licenses/gpl.html
 $whitelistPatterns = array(
   //Usage example: To support any URL at example.net, including sub-domains, uncomment the
   //line below (which is equivalent to [ @^https?://([a-z0-9-]+\.)*example\.net@i ]):
-  //getHostnamePattern("example.net")
+  getHostnamePattern("api.club-os.com")
 );
 
 //To enable CORS (cross-origin resource sharing) for proxied sites, set $forceCORS to true.
-$forceCORS = false;
+$forceCORS = true;
 
 /****************************** END CONFIGURATION ******************************/
 
@@ -93,16 +93,24 @@ function makeRequest($url) {
   removeKeys($browserRequestHeaders, array(
     "Host",
     "Content-Length",
-    "Accept-Encoding" //Throw away the browser's Accept-Encoding header if any and let cURL make the request using gzip if possible.
+    "Accept-Encoding", //Throw away the browser's Accept-Encoding header if any and let cURL make the request using gzip if possible.
+    "Authorization",
+    "Content-Type"
   ));
 
   curl_setopt($ch, CURLOPT_ENCODING, "");
   //Transform the associative array from getallheaders() into an
   //indexed array of header strings to be passed to cURL.
   $curlRequestHeaders = array();
+  
   foreach ($browserRequestHeaders as $name => $value) {
     $curlRequestHeaders[] = $name . ": " . $value;
   }
+  
+  //add authentication header required for clubOS API
+  $curlRequestHeaders[] = "Authorization: Basic ZGV2ZWxvcGVyQHBpdm90YWxmaXRuZXNzLmNvbTo3RzE1R2RJVE8zSWdLUXY=";
+  $curlRequestHeaders[] = "Content-Type: application/json";
+  
   curl_setopt($ch, CURLOPT_HTTPHEADER, $curlRequestHeaders);
 
   //Proxy any received GET/POST/PUT data.
@@ -114,13 +122,18 @@ function makeRequest($url) {
       //but the php://input method works. This is likely to be flaky
       //across different server environments.
       //More info here: http://stackoverflow.com/questions/8899239/http-raw-post-data-not-being-populated-after-upgrade-to-php-5-3
+      
       //If the miniProxyFormAction field appears in the POST data, remove it so the destination server doesn't receive it.
       $postData = Array();
       parse_str(file_get_contents("php://input"), $postData);
       if (isset($postData["miniProxyFormAction"])) {
         unset($postData["miniProxyFormAction"]);
       }
-      curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+      
+      //ClubOS requires JSON data format, this proxy is just passing through the received request body.
+      curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+      $curlRequestHeaders[] = "Content-Length: " . strlen($postData);
+      
     break;
     case "PUT":
       curl_setopt($ch, CURLOPT_PUT, true);
